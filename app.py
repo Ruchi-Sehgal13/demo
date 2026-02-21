@@ -93,14 +93,19 @@ if run_btn and question.strip():
     try:
         status_placeholder.info("Running planner and primary LLM...")
         progress.progress(25)
+        import time
+        _t0 = time.perf_counter()
         result = run_workflow(
             question.strip(),
             llm_provider=provider,
             llm_model=model or default_model,
         )
+        _elapsed = time.perf_counter() - _t0
         progress.progress(100)
         st.session_state["last_result"] = result
-        status_placeholder.success("Verification complete.")
+        st.session_state["last_elapsed"] = _elapsed
+        status_placeholder.success(f"Verification complete in **{_elapsed:.1f}s**")
+        logging.info(f"Response time: {_elapsed:.2f}s")
     except Exception as e:
         status_placeholder.error(f"Error: {e}")
         st.exception(e)

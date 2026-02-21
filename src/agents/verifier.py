@@ -1,10 +1,9 @@
-import asyncio
 import logging
 import re
 from typing import Dict, List
 
-from src.config import paths
 from src.graph.state import VerificationRecord, VerificationState
+from src.rag.store_manager import StoreManager
 from src.rag.vectorstore import IPCBNSRelationalStore, IPCBNSVectorStore
 
 logger = logging.getLogger(__name__)
@@ -110,31 +109,13 @@ def _fuse(rel: Dict[str, object], vec: Dict[str, object]) -> VerificationRecord:
     }
 
 
-# ── Lazy singleton stores ────────────────────────────────────────────────────
 
-_rel_store = None
-_vec_store = None
-
-
-def _get_stores():
-    global _rel_store, _vec_store
-    if _rel_store is None:
-        _rel_store = IPCBNSRelationalStore(paths.SQLITE_DB)
-        logger.info("Initialized relational store from %s", paths.SQLITE_DB)
-    if _vec_store is None:
-        _vec_store = IPCBNSVectorStore()
-        logger.info("Initialized vector store")
-    return _rel_store, _vec_store
-
-
-async def _verify_single_claim(
+def _verify_single_claim(
     claim: str, rel: IPCBNSRelationalStore, vec: IPCBNSVectorStore
 ) -> VerificationRecord:
-    """Verify a single claim using both stores — runs in a thread for I/O."""
-    rel_score, vec_score = await asyncio.gather(
-        asyncio.to_thread(_score_relational, claim, rel),
-        asyncio.to_thread(_score_vector, claim, vec),
-    )
+    """Verify a single claim using both stores."""
+    rel_score = _score_relational(claim, rel)
+    vec_score = _score_vector(claim, vec)
     fused = _fuse(rel_score, vec_score)
     fused["claim"] = claim
     return fused
@@ -156,13 +137,14 @@ async def verifier_node(state: VerificationState) -> dict:
         }
 
     claims = state.get("claims", [])
-    logger.info("Verifying %d claims in parallel", len(claims))
-    rel, vec = _get_stores()
+    logger.info("Verifying %d claims", len(claims))
+    stores = StoreManager()
+    rel, vec = stores.relational, stores.vector
 
-    # Verify all claims concurrently
-    verifications: List[VerificationRecord] = await asyncio.gather(
-        *[_verify_single_claim(claim, rel, vec) for claim in claims]
-    )
+    # Verify all claims (stores are pre-initialized for fast access)
+    verifications: List[VerificationRecord] = [
+        _verify_single_claim(claim, rel, vec) for claim in claims
+    ]
 
     supported = sum(1 for v in verifications if v["status"] == "supported")
     contradicted = sum(1 for v in verifications if v["status"] == "contradicted")
