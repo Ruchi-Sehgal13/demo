@@ -62,15 +62,6 @@ dmypy.json
 Thumbs.db
 ehthumbs.db
 
-# Project: generated and runtime data
-data/chroma_ipcbns/
-data/db/*.db
-data/db/*.sqlite3
-*.sqlite3
-data/eval_log.jsonl
-data/human_review_queue.jsonl
-data/processed/*.json
-
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb_checkpoints
