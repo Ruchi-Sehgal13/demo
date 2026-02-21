@@ -1,6 +1,14 @@
 from typing import Any, Dict, List, Literal, Optional, TypedDict
 
-StatusLabel = Literal["supported", "contradicted", "uncertain"]
+# Tiered by strength of evidence (vector similarity + optional section match)
+StatusLabel = Literal[
+    "strong_evidence",    # high similarity, chunk clearly supports
+    "moderate_evidence",  # decent match
+    "weak_evidence",      # some relevance, not enough to fully trust
+    "uncertain",          # cannot tell
+    "no_evidence",        # no relevant evidence in KB — model's claim, not verified
+    "contradicted",       # KB or relational explicitly contradicts
+]
 
 
 class VerificationRecord(TypedDict):

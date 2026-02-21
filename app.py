@@ -27,12 +27,17 @@ with st.sidebar:
 
     provider = st.selectbox(
         "LLM Provider",
-        ["google", "offline", "openai", "anthropic"],
-        index=0,
-        help="Gemini (google) is recommended and free with Jio.",
+        ["groq", "google", "offline"],
+        index=1,
+        help="Groq or Google (Gemini) for real answers; offline for testing without API.",
     )
 
-    default_model = "gemini-2.0-flash" if provider == "google" else ""
+    if provider == "groq":
+        default_model = "llama-3.3-70b-versatile"
+    elif provider == "google":
+        default_model = "gemini-2.5-flash"
+    else:
+        default_model = ""
     model = st.text_input(
         "Model name",
         value=default_model,
@@ -94,13 +99,19 @@ if result:
         st.subheader("Primary LLM Response")
         st.markdown(result.get("llm_answer", ""))
 
-        c1, c2, c3, c4 = st.columns(4)
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
         c1.metric("Overall Status", final.get("overall_status", "").upper())
-        c2.metric(
-            "Avg Confidence", f"{final.get('average_confidence', 0.0):.2f}"
-        )
-        c3.metric("Supported", final.get("supported_claims", 0))
-        c4.metric("Contradicted", final.get("contradicted_claims", 0))
+        c2.metric("Avg Confidence", f"{final.get('average_confidence', 0.0):.2f}")
+        c3.metric("Highly / Supported", final.get("supported_claims", 0))
+        c4.metric("Weak evidence", final.get("weak_evidence_claims", 0))
+        c5.metric("No evidence in KB", final.get("no_evidence_claims", 0))
+        c6.metric("Contradicted", final.get("contradicted_claims", 0))
+        no_evidence_count = final.get("no_evidence_claims", 0)
+        if no_evidence_count > 0:
+            st.caption(
+                "For some claims, no supporting evidence was found in the knowledge base; "
+                "the answer reflects the model's reasoning for those points."
+            )
 
     with tab2:
         st.subheader("Claim‑by‑Claim Verification")
@@ -108,19 +119,30 @@ if result:
         if not verifications:
             st.info("No claims extracted (planner may have chosen DIRECT route).")
         else:
+            _status_icons = {
+                "strong_evidence": "🟢",
+                "moderate_evidence": "✅",
+                "weak_evidence": "🟡",
+                "uncertain": "⚠️",
+                "no_evidence": "📋",
+                "contradicted": "❌",
+            }
+            _status_labels = {
+                "strong_evidence": "Strong evidence",
+                "moderate_evidence": "Moderate evidence",
+                "weak_evidence": "Weak evidence",
+                "uncertain": "Uncertain",
+                "no_evidence": "No evidence in KB (model's claim)",
+                "contradicted": "Contradicted",
+            }
             for i, v in enumerate(verifications, start=1):
-                status = v["status"]
-                icon = (
-                    "✅"
-                    if status == "supported"
-                    else "❌"
-                    if status == "contradicted"
-                    else "⚠️"
-                )
+                status = v.get("status", "uncertain")
+                icon = _status_icons.get(status, "⚠️")
+                label = _status_labels.get(status, status.replace("_", " ").title())
                 with st.container():
                     c1, c2, c3, c4 = st.columns([4, 1, 1, 1])
                     c1.markdown(f"**Claim {i}:** {v['claim']}")
-                    c2.markdown(f"{icon} {status.upper()}")
+                    c2.markdown(f"{icon} {label}")
                     c3.write(f"{v['confidence']:.2f}")
                     c4.caption(v.get("source", ""))
                     with st.expander("View evidence"):

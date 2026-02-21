@@ -1,19 +1,45 @@
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import Column, MetaData, String, Table, create_engine, select
 from sqlalchemy.engine import Engine
 
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_community.vectorstores import Chroma
-# and ensure: pip install langchain-community chromadb
-
 from langchain_chroma import Chroma
-# and ensure: pip install langchain-chroma chromadb
-
+from langchain_core.embeddings import Embeddings
 
 from src.config import paths
+
+
+def get_embeddings() -> Embeddings:
+    """Use Google embeddings if GOOGLE_API_KEY is set, else local sentence-transformers."""
+    if os.getenv("GOOGLE_API_KEY"):
+        from langchain_google_genai import GoogleGenerativeAIEmbeddings
+        return GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
+    return SentenceTransformerEmbeddings()
+
+
+class SentenceTransformerEmbeddings(Embeddings):
+    """Local embeddings via sentence-transformers (no API key)."""
+
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+        self._model_name = model_name
+        self._model = None
+
+    def _get_model(self):
+        if self._model is None:
+            from sentence_transformers import SentenceTransformer
+            self._model = SentenceTransformer(self._model_name)
+        return self._model
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        model = self._get_model()
+        return model.encode(texts, convert_to_numpy=True).tolist()
+
+    def embed_query(self, text: str) -> List[float]:
+        model = self._get_model()
+        return model.encode(text, convert_to_numpy=True).tolist()
 
 
 class IPCBNSRelationalStore:
@@ -24,6 +50,7 @@ class IPCBNSRelationalStore:
     """
 
     def __init__(self, db_path: str):
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self.engine: Engine = create_engine(f"sqlite:///{db_path}")
         self.meta = MetaData()
         self.mapping = Table(
@@ -71,9 +98,7 @@ class IPCBNSVectorStore:
         if persist_dir is None:
             persist_dir = str(Path(paths.ROOT) / "data" / "chroma_ipcbns")
         self.persist_dir = persist_dir
-        self.embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/text-embedding-004"
-        )
+        self.embeddings = get_embeddings()
         self.store: Optional[Chroma] = None
 
     def build_from_json(self, json_path: str) -> None:
@@ -82,8 +107,10 @@ class IPCBNSVectorStore:
             raise FileNotFoundError(f"Chunks JSON not found at {p}")
         data = json.loads(p.read_text(encoding="utf-8"))
 
-        texts = [c["text"] for c in data["chunks"]]
-        metas = [c["metadata"] for c in data["chunks"]]
+        # Skip empty chunks (embedding API rejects empty text)
+        pairs = [(c["text"], c["metadata"]) for c in data["chunks"] if (c.get("text") or "").strip()]
+        texts = [t for t, _ in pairs]
+        metas = [m for _, m in pairs]
 
         self.store = Chroma.from_texts(
             texts=texts,

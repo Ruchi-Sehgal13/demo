@@ -6,15 +6,15 @@ langchain
 langchain-core
 langgraph
 
-# Google Gemini (primary LLM + embeddings)
-google-generativeai
+# Embeddings (local, no API key)
+sentence-transformers
+
+# LLM providers
+langchain-groq
 langchain-google-genai
 
-# Optional: other providers
-openai
-anthropic
-
 chromadb
+langchain-chroma
 faiss-cpu
 
 pymupdf

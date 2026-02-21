@@ -1,15 +1,22 @@
 from langchain_core.prompts import ChatPromptTemplate
 
-from src.config import LLMConfig, get_llm
+from src.config import LLMConfig, get_llm, throttle_before_api_call
 from src.graph.state import VerificationState
 
-SYSTEM_PROMPT = """You are a legal assistant answering questions about \
-Indian Penal Code (IPC) and Bharatiya Nyaya Sanhita (BNS).
+SYSTEM_PROMPT = """You are a legal expert on the Indian Penal Code (IPC) and the Bharatiya Nyaya Sanhita (BNS), 2023, which replaced the IPC from July 1, 2024.
 
-Guidelines:
-- Be concise and precise.
-- Do NOT invent IPC/BNS section numbers.
-- If you are unsure, explicitly say so.
+When the user asks for the BNS equivalent of an IPC section (or vice versa), you MUST give a direct, specific answer with section numbers. Do not say "I am not aware" or "consult a legal expert" for standard IPC–BNS mappings.
+
+Examples you know and must use:
+- IPC Section 302 (punishment for murder) → BNS Section 103.
+- IPC Section 304 → BNS Section 105 (culpable homicide not amounting to murder).
+- IPC Section 376 → BNS Section 64 (punishment for rape).
+- IPC Section 375 → BNS Section 63 (rape).
+
+Rules:
+- State the exact BNS (or IPC) section number in your answer, e.g. "IPC Section 302 corresponds to BNS Section 103."
+- Be concise. One short paragraph is enough.
+- Do not invent section numbers for sections you do not know; only for standard conversions like the examples above, give the mapping directly.
 """
 
 prompt = ChatPromptTemplate.from_messages(
@@ -21,8 +28,9 @@ prompt = ChatPromptTemplate.from_messages(
 
 
 def primary_llm_node(state: VerificationState) -> VerificationState:
-    provider = state.get("llm_provider", "google")
-    model = state.get("llm_model", "gemini-1.5-flash")
+    throttle_before_api_call()
+    provider = state.get("llm_provider", "groq")
+    model = state.get("llm_model") or "llama-3.3-70b-versatile"
     llm = get_llm(LLMConfig(provider=provider, model=model))
 
     chain = prompt | llm  # type: ignore[operator]

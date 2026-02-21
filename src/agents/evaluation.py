@@ -20,6 +20,8 @@ def evaluation_node(state: VerificationState) -> VerificationState:
         "average_confidence": final.get("average_confidence"),
         "counts": {
             "supported": final.get("supported_claims"),
+            "weak_evidence": final.get("weak_evidence_claims", 0),
+            "no_evidence": final.get("no_evidence_claims", 0),
             "contradicted": final.get("contradicted_claims"),
             "uncertain": final.get("uncertain_claims"),
             "total": final.get("total_claims"),

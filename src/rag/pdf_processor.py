@@ -8,6 +8,7 @@ import fitz  # PyMuPDF
 from src.config import paths
 
 SECTION_RE = re.compile(r"^\s*(Section\s+)?(\d+[A-Z]?)\b")
+TABLE_HEADING_RE = re.compile(r"^Table\s+\d+", re.IGNORECASE)
 
 
 def load_pdf_pages(pdf_path: Path) -> List[Dict[str, Any]]:
@@ -45,12 +46,19 @@ def structure_aware_chunk(
 
         for para in paras:
             m = SECTION_RE.match(para)
+            table_heading = TABLE_HEADING_RE.match(para)
             if m:
                 if current:
                     chunks.append({"text": current.strip(), "metadata": current_meta})
                 sec = m.group(2)
                 current = para + "\n"
                 current_meta = {"page": page["page"], "section": sec}
+            elif table_heading:
+                # Start new chunk at each "Table N: ..." so conversion tables are isolated
+                if current:
+                    chunks.append({"text": current.strip(), "metadata": current_meta})
+                current = para + "\n"
+                current_meta = {"page": page["page"], "section": None}
             else:
                 if len(current) + len(para) + 2 <= max_chars:
                     current += para + "\n"
