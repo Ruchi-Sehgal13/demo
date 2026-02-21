@@ -1,7 +1,12 @@
+import logging
+
 from langchain_core.prompts import ChatPromptTemplate
 
 from src.config import LLMConfig, get_llm
 from src.graph.state import VerificationState
+from src.agents.utils import extract_text
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are a legal assistant answering questions about \
 Indian Penal Code (IPC) and Bharatiya Nyaya Sanhita (BNS).
@@ -22,11 +27,17 @@ prompt = ChatPromptTemplate.from_messages(
 
 def primary_llm_node(state: VerificationState) -> VerificationState:
     provider = state.get("llm_provider", "google")
-    model = state.get("llm_model", "gemini-1.5-flash")
-    llm = get_llm(LLMConfig(provider=provider, model=model))
+    model = state.get("llm_model", "gemini-2.5-flash")
 
-    chain = prompt | llm  # type: ignore[operator]
-    result = chain.invoke({"question": state["question"]})
-    content = getattr(result, "content", None) or str(result)
-    state["llm_answer"] = content
+    try:
+        llm = get_llm(LLMConfig(provider=provider, model=model))
+        chain = prompt | llm  # type: ignore[operator]
+        result = chain.invoke({"question": state["question"]})
+        state["llm_answer"] = extract_text(result)
+    except Exception as e:
+        logger.error("Primary LLM failed: %s", e, exc_info=True)
+        state["llm_answer"] = (
+            f"⚠️ All models failed to generate an answer. Error: {e}"
+        )
+
     return state

@@ -1,7 +1,13 @@
+import json
+import logging
+
 from langchain_core.prompts import ChatPromptTemplate
 
 from src.config import LLMConfig, get_llm
 from src.graph.state import VerificationState
+from src.agents.utils import extract_text
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are a planner for a hallucination-guardrail system \
 verifying Indian criminal law questions (IPC ↔ BNS).
@@ -31,14 +37,38 @@ prompt = ChatPromptTemplate.from_messages(
 
 
 def planner_node(state: VerificationState) -> VerificationState:
-    llm = get_llm(LLMConfig())
-    chain = prompt | llm.with_structured_output(schema={"plan": "string", "route": "string"})  # type: ignore[arg-type]
-    result = chain.invoke({"question": state["question"]})
+    try:
+        llm = get_llm(LLMConfig())
+        # Try structured output first (works with primary model).
+        try:
+            chain = prompt | llm.with_structured_output(
+                schema={"plan": "string", "route": "string"}
+            )  # type: ignore[arg-type]
+            result = chain.invoke({"question": state["question"]})
+        except (AttributeError, NotImplementedError):
+            # Fallback: some models/wrappers don't support with_structured_output.
+            chain = prompt | llm  # type: ignore[operator]
+            raw = chain.invoke({"question": state["question"]})
+            text = extract_text(raw)
+            # Try to parse JSON from the text response.
+            try:
+                result = json.loads(text)
+            except json.JSONDecodeError:
+                # Last resort: extract from markdown code block.
+                import re
+                m = re.search(r"\{[^}]+\}", text, re.DOTALL)
+                result = json.loads(m.group()) if m else {"plan": text, "route": "verify"}
 
-    route = result.get("route", "verify").lower()
-    if route not in {"verify", "direct"}:
-        route = "verify"
+        route = result.get("route", "verify").lower()
+        if route not in {"verify", "direct"}:
+            route = "verify"
 
-    state["plan"] = result.get("plan", "")
-    state["route"] = route  # type: ignore[assignment]
+        state["plan"] = result.get("plan", "")
+        state["route"] = route  # type: ignore[assignment]
+
+    except Exception as e:
+        logger.error("Planner failed: %s", e, exc_info=True)
+        state["plan"] = f"Planner error: {e}"
+        state["route"] = "verify"  # type: ignore[assignment]
+
     return state

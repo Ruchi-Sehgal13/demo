@@ -1,9 +1,13 @@
+import logging
 from typing import List
 
 from langchain_core.prompts import ChatPromptTemplate
 
 from src.config import LLMConfig, get_llm
 from src.graph.state import VerificationState
+from src.agents.utils import extract_text
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You extract atomic factual claims from a legal answer.
 
@@ -40,9 +44,14 @@ def claim_extractor_node(state: VerificationState) -> VerificationState:
         state["claims"] = []
         return state
 
-    llm = get_llm(LLMConfig())
-    chain = prompt | llm  # type: ignore[operator]
-    result = chain.invoke({"answer": state["llm_answer"]})
-    content = getattr(result, "content", None) or str(result)
-    state["claims"] = _parse_claims(content)
+    try:
+        llm = get_llm(LLMConfig())
+        chain = prompt | llm  # type: ignore[operator]
+        result = chain.invoke({"answer": state["llm_answer"]})
+        content = extract_text(result)
+        state["claims"] = _parse_claims(content)
+    except Exception as e:
+        logger.error("Claim extraction failed: %s", e, exc_info=True)
+        state["claims"] = []
+
     return state

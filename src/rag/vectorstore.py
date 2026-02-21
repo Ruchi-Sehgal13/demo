@@ -24,6 +24,7 @@ class IPCBNSRelationalStore:
     """
 
     def __init__(self, db_path: str):
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self.engine: Engine = create_engine(f"sqlite:///{db_path}")
         self.meta = MetaData()
         self.mapping = Table(
@@ -71,15 +72,19 @@ class IPCBNSVectorStore:
         if persist_dir is None:
             persist_dir = str(Path(paths.ROOT) / "data" / "chroma_ipcbns")
         self.persist_dir = persist_dir
+        Path(self.persist_dir).parent.mkdir(parents=True, exist_ok=True)
         self.embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/text-embedding-004"
+            model="models/gemini-embedding-001"
         )
         self.store: Optional[Chroma] = None
 
     def build_from_json(self, json_path: str) -> None:
         p = Path(json_path)
         if not p.exists():
-            raise FileNotFoundError(f"Chunks JSON not found at {p}")
+            raise FileNotFoundError(
+                f"Chunks JSON not found at {p}. "
+                "Please run 'python src/rag/pdf_processor.py' to generate it."
+            )
         data = json.loads(p.read_text(encoding="utf-8"))
 
         texts = [c["text"] for c in data["chunks"]]

@@ -1,3 +1,4 @@
+import logging
 import os
 from dataclasses import dataclass
 from typing import Literal, Optional
@@ -6,13 +7,24 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 LLMProvider = Literal["google", "offline", "openai", "anthropic"]
+
+# Ordered list of Google models to try when the primary model's quota is exhausted.
+GOOGLE_FALLBACK_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-3-flash-preview",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-2.5-flash-lite",
+]
 
 
 @dataclass
 class LLMConfig:
     provider: LLMProvider = "google"
-    model: str = "gemini-2.0-flash"
+    model: str = "gemini-2.5-flash"
     temperature: float = 0.2
 
 
@@ -34,7 +46,9 @@ def get_llm(config: Optional[LLMConfig] = None):
     """
     Return a LangChain-compatible chat model.
 
-    Gemini is default; fall back to offline dummy or other providers as configured.
+    For the Google provider, the returned model is wrapped with fallbacks so
+    that if the primary model's quota is exhausted (429 RESOURCE_EXHAUSTED),
+    the next model in GOOGLE_FALLBACK_MODELS is tried automatically.
     """
     from langchain_core.language_models import BaseChatModel  # type: ignore
 
@@ -47,12 +61,33 @@ def get_llm(config: Optional[LLMConfig] = None):
         api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError("Set GOOGLE_API_KEY or GEMINI_API_KEY in environment.")
-        llm: BaseChatModel = ChatGoogleGenerativeAI(
-            model=config.model,
-            api_key=api_key,
-            temperature=config.temperature,
-        )
-        return llm
+
+        def _make_google_llm(model_name: str) -> ChatGoogleGenerativeAI:
+            return ChatGoogleGenerativeAI(
+                model=model_name,
+                api_key=api_key,
+                temperature=config.temperature,
+                max_retries=1,  # fail fast → let fallback handle it
+            )
+
+        primary: BaseChatModel = _make_google_llm(config.model)
+
+        # Build fallback LLMs from every model in the list except the primary.
+        fallbacks = [
+            _make_google_llm(m)
+            for m in GOOGLE_FALLBACK_MODELS
+            if m != config.model
+        ]
+
+        if fallbacks:
+            logger.info(
+                "Google LLM: primary=%s, fallbacks=%s",
+                config.model,
+                [m for m in GOOGLE_FALLBACK_MODELS if m != config.model],
+            )
+            return primary.with_fallbacks(fallbacks)
+
+        return primary
 
     if config.provider == "offline":
         from langchain_core.runnables import RunnableLambda  # type: ignore

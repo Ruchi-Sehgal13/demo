@@ -1,9 +1,13 @@
 from dotenv import load_dotenv
-load_dotenv()
+
 import sys
 from pathlib import Path
 
 import streamlit as st
+import logging
+from datetime import datetime
+
+load_dotenv()
 
 ROOT = Path(__file__).resolve().parent
 sys.path.append(str(ROOT))
@@ -22,6 +26,19 @@ st.markdown(
     "a trusted IPC–BNS knowledge base (relational + vector)."
 )
 
+# Setup logging
+LOG_DIR = ROOT / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+log_format = "%(asctime)s - %(levelname)s - %(message)s"
+logging.basicConfig(
+    level=logging.INFO,
+    format=log_format,
+    handlers=[
+        logging.FileHandler(LOG_DIR / "user_queries.log"),
+        logging.StreamHandler(),  # also print to terminal
+    ],
+)
+
 with st.sidebar:
     st.header("Configuration")
 
@@ -32,7 +49,7 @@ with st.sidebar:
         help="Gemini (google) is recommended and free with Jio.",
     )
 
-    default_model = "gemini-2.0-flash" if provider == "google" else ""
+    default_model = "gemini-2.5-flash" if provider == "google" else ""
     model = st.text_input(
         "Model name",
         value=default_model,
@@ -65,6 +82,7 @@ with col2:
     progress = st.progress(0)
 
 if run_btn and question.strip():
+    logging.info(f"User Question: {question.strip()} | Provider: {provider} | Model: {model or default_model}")
     try:
         status_placeholder.info("Running planner and primary LLM...")
         progress.progress(25)

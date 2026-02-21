@@ -48,7 +48,7 @@ def create_workflow():
 def run_workflow(
     question: str,
     llm_provider: str = "google",
-    llm_model: str = "gemini-2.0-flash",
+    llm_model: str = "gemini-2.5-flash",
 ):
     app = create_workflow()
     initial: VerificationState = {
