@@ -36,7 +36,7 @@ prompt = ChatPromptTemplate.from_messages(
 )
 
 
-def planner_node(state: VerificationState) -> dict:
+async def planner_node(state: VerificationState) -> dict:
     provider = state.get("llm_provider", settings["llm"]["provider"])
     model = state.get("llm_model", settings["llm"]["model"])
 
@@ -47,11 +47,11 @@ def planner_node(state: VerificationState) -> dict:
             chain = prompt | llm.with_structured_output(
                 schema={"plan": "string", "route": "string"}
             )  # type: ignore[arg-type]
-            result = chain.invoke({"question": state["question"]})
+            result = await chain.ainvoke({"question": state["question"]})
         except (AttributeError, NotImplementedError):
             # Fallback: some models/wrappers don't support with_structured_output.
             chain = prompt | llm  # type: ignore[operator]
-            raw = chain.invoke({"question": state["question"]})
+            raw = await chain.ainvoke({"question": state["question"]})
             text = extract_text(raw)
             # Try to parse JSON from the text response.
             try:

@@ -1,4 +1,6 @@
-from langgraph.graph import END, StateGraph
+import asyncio
+
+from langgraph.graph import END, START, StateGraph
 
 from src.agents.claim_extractor import claim_extractor_node
 from src.agents.evaluation import evaluation_node
@@ -20,23 +22,26 @@ def create_workflow():
     g.add_node("human_validation", human_validation_node)
     g.add_node("evaluation", evaluation_node)
 
-    g.set_entry_point("planner")
-
-    # Planner → Primary LLM
-    g.add_edge("planner", "primary_llm")
+    # Fan-out: planner and primary_llm run in PARALLEL from START
+    g.add_edge(START, "planner")
+    g.add_edge(START, "primary_llm")
 
     def _should_verify(state: VerificationState) -> bool:
         return state.get("route", "verify") == "verify"
 
-    # Conditional branch: verify or direct.
+    # Both must complete before routing decision
+    # LangGraph waits for all incoming edges before executing conditional
     g.add_conditional_edges(
-        "primary_llm",
+        "planner",
         _should_verify,
         {
             True: "claim_extractor",
             False: "evaluation",
         },
     )
+
+    # primary_llm also feeds into claim_extractor (provides llm_answer)
+    g.add_edge("primary_llm", "claim_extractor")
 
     g.add_edge("claim_extractor", "verifier")
     g.add_edge("verifier", "human_validation")
@@ -49,7 +54,7 @@ def create_workflow():
 _compiled_workflow = None
 
 
-def run_workflow(
+async def _run_workflow_async(
     question: str,
     llm_provider: str = settings["llm"]["provider"],
     llm_model: str = settings["llm"]["model"],
@@ -63,8 +68,33 @@ def run_workflow(
         "llm_model": llm_model,
         "metadata": {},
     }
-    final_state = _compiled_workflow.invoke(initial)
+    final_state = await _compiled_workflow.ainvoke(initial)
     return final_state
+
+
+def run_workflow(
+    question: str,
+    llm_provider: str = settings["llm"]["provider"],
+    llm_model: str = settings["llm"]["model"],
+):
+    """Sync wrapper for Streamlit compatibility."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # Already in an async context (e.g. Streamlit with async)
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(
+                asyncio.run,
+                _run_workflow_async(question, llm_provider, llm_model)
+            ).result()
+    else:
+        return asyncio.run(
+            _run_workflow_async(question, llm_provider, llm_model)
+        )
 
 
 if __name__ == "__main__":

@@ -39,7 +39,7 @@ def _parse_claims(text: str) -> List[str]:
     return claims
 
 
-def claim_extractor_node(state: VerificationState) -> dict:
+async def claim_extractor_node(state: VerificationState) -> dict:
     if state.get("route", "verify") == "direct":
         return {"claims": []}
 
@@ -49,7 +49,7 @@ def claim_extractor_node(state: VerificationState) -> dict:
     try:
         llm = get_llm(LLMConfig(provider=provider, model=model))
         chain = prompt | llm  # type: ignore[operator]
-        result = chain.invoke({"answer": state["llm_answer"]})
+        result = await chain.ainvoke({"answer": state["llm_answer"]})
         content = extract_text(result)
         return {"claims": _parse_claims(content)}
     except Exception as e:

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 from typing import Dict, List
@@ -126,7 +127,20 @@ def _get_stores():
     return _rel_store, _vec_store
 
 
-def verifier_node(state: VerificationState) -> dict:
+async def _verify_single_claim(
+    claim: str, rel: IPCBNSRelationalStore, vec: IPCBNSVectorStore
+) -> VerificationRecord:
+    """Verify a single claim using both stores — runs in a thread for I/O."""
+    rel_score, vec_score = await asyncio.gather(
+        asyncio.to_thread(_score_relational, claim, rel),
+        asyncio.to_thread(_score_vector, claim, vec),
+    )
+    fused = _fuse(rel_score, vec_score)
+    fused["claim"] = claim
+    return fused
+
+
+async def verifier_node(state: VerificationState) -> dict:
     if state.get("route", "verify") == "direct":
         logger.info("Verifier: skipping (direct route)")
         return {
@@ -142,18 +156,13 @@ def verifier_node(state: VerificationState) -> dict:
         }
 
     claims = state.get("claims", [])
-    logger.info("Verifying %d claims", len(claims))
+    logger.info("Verifying %d claims in parallel", len(claims))
     rel, vec = _get_stores()
 
-    verifications: List[VerificationRecord] = []
-
-    for claim in claims:
-        logger.debug("Claim: %s", claim[:80])
-        rel_score = _score_relational(claim, rel)
-        vec_score = _score_vector(claim, vec)
-        fused = _fuse(rel_score, vec_score)
-        fused["claim"] = claim
-        verifications.append(fused)
+    # Verify all claims concurrently
+    verifications: List[VerificationRecord] = await asyncio.gather(
+        *[_verify_single_claim(claim, rel, vec) for claim in claims]
+    )
 
     supported = sum(1 for v in verifications if v["status"] == "supported")
     contradicted = sum(1 for v in verifications if v["status"] == "contradicted")

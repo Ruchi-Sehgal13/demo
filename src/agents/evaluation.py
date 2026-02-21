@@ -6,7 +6,7 @@ from src.config import paths
 from src.graph.state import VerificationState
 
 
-def evaluation_node(state: VerificationState) -> dict:
+async def evaluation_node(state: VerificationState) -> dict:
     """
     Log run metadata for offline evaluation (precision/recall, latency, etc.).
     """

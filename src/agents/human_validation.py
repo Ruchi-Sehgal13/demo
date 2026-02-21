@@ -6,7 +6,7 @@ from src.config import paths, HUMAN_REVIEW_THRESHOLD
 from src.graph.state import VerificationState
 
 
-def human_validation_node(state: VerificationState) -> dict:
+async def human_validation_node(state: VerificationState) -> dict:
     """
     Decide whether a human should review and, if so, queue the case.
 

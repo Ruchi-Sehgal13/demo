@@ -25,14 +25,14 @@ prompt = ChatPromptTemplate.from_messages(
 )
 
 
-def primary_llm_node(state: VerificationState) -> dict:
+async def primary_llm_node(state: VerificationState) -> dict:
     provider = state.get("llm_provider", settings["llm"]["provider"])
     model = state.get("llm_model", settings["llm"]["model"])
 
     try:
         llm = get_llm(LLMConfig(provider=provider, model=model))
         chain = prompt | llm  # type: ignore[operator]
-        result = chain.invoke({"question": state["question"]})
+        result = await chain.ainvoke({"question": state["question"]})
         return {"llm_answer": extract_text(result)}
     except Exception as e:
         logger.error("Primary LLM failed: %s", e, exc_info=True)
