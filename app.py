@@ -19,7 +19,7 @@ st.set_page_config(
 st.title("Hallucination Guardrail Meta‑Agent (IPC ↔ BNS)")
 st.markdown(
     "Meta‑agent that breaks LLM responses into claims and verifies them against "
-    "a trusted IPC–BNS knowledge base (relational + vector)."
+    "a trusted IPC–BNS knowledge base (vector store)."
 )
 
 with st.sidebar:
@@ -47,10 +47,9 @@ with st.sidebar:
     st.markdown("---")
     st.markdown(
         "**Workflow**\n\n"
-        "1. Planner decides whether verification is needed.\n"
-        "2. Primary LLM answers the question.\n"
-        "3. Claims are extracted and verified via relational + vector stores.\n"
-        "4. Low‑confidence outputs are queued for human review; all runs are logged."
+        "1. Primary LLM answers the question.\n"
+        "2. Claims are extracted and verified via the vector store (embedding similarity).\n"
+        "3. All runs are logged."
     )
 
 st.markdown("---")
@@ -71,7 +70,7 @@ with col2:
 
 if run_btn and question.strip():
     try:
-        status_placeholder.info("Running planner and primary LLM...")
+        status_placeholder.info("Running primary LLM and verification...")
         progress.progress(25)
         result = run_workflow(
             question.strip(),
@@ -117,7 +116,7 @@ if result:
         st.subheader("Claim‑by‑Claim Verification")
         verifications = result.get("verifications", [])
         if not verifications:
-            st.info("No claims extracted (planner may have chosen DIRECT route).")
+            st.info("No claims extracted.")
         else:
             _status_icons = {
                 "strong_evidence": "🟢",
@@ -150,16 +149,8 @@ if result:
                 st.divider()
 
     with tab3:
-        st.subheader("Planner, Human Validation & Evaluation")
-        st.json(
-            {
-                "plan": result.get("plan"),
-                "route": result.get("route"),
-                "needs_human": result.get("needs_human"),
-                "human_feedback": result.get("human_feedback"),
-                "evaluation": result.get("evaluation"),
-            }
-        )
+        st.subheader("Evaluation")
+        st.json(result.get("evaluation", {}))
 
     with tab4:
         st.subheader("Raw State (Debug)")

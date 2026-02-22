@@ -1,1 +1,1 @@
-# RAG components (PDF processing, vector store, relational DB).
+# RAG components (PDF processing, vector store).

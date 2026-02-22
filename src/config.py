@@ -31,13 +31,12 @@ class LLMConfig:
 
 @dataclass
 class ProjectPaths:
-    """Absolute paths to project data: project root, raw PDF, processed chunks JSON, SQLite DB, eval log."""
+    """Absolute paths to project data: project root, raw PDF, processed chunks JSON, eval log."""
     ROOT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     RAW_PDF: str = os.path.join(ROOT, "data", "raw", "IPC-to-BNS-Conversion-Guide.pdf")
     PROCESSED_CHUNKS: str = os.path.join(
         ROOT, "data", "processed", "ipcbns_chunks.json"
     )
-    SQLITE_DB: str = os.path.join(ROOT, "data", "db", "ipcbns_mapping.db")
     EVAL_LOG: str = os.path.join(ROOT, "data", "eval_log.jsonl")
 
 

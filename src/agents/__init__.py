@@ -1,1 +1,1 @@
-# Individual agents: planner, primary LLM, claim extractor, verifier, etc.
+# Individual agents: primary LLM, claim extractor, verifier, evaluation, etc.

@@ -1,17 +1,14 @@
 """
-Verifier node: for each extracted claim, scores it using the relational store (SQLite IPC→BNS)
-and the vector store (Chroma similarity over PDF chunks), then fuses results into a VerificationRecord.
-Produces state["verifications"] and state["final_result"] (overall_status, counts, average_confidence).
+Verifier node: for each extracted claim, scores it using the vector store (Chroma similarity over
+PDF chunks). Produces state["verifications"] and state["final_result"] (overall_status, counts,
+average_confidence).
 """
 import re
 from typing import Dict, List
 
-from src.config import paths, throttle_before_api_call
+from src.config import throttle_before_api_call
 from src.graph.state import VerificationRecord, VerificationState
-from src.rag.vectorstore import IPCBNSRelationalStore, IPCBNSVectorStore
-
-# Set to False to verify only via vector search (for testing).
-USE_RELATIONAL_VERIFICATION = False
+from src.rag.vectorstore import IPCBNSVectorStore
 
 SECTION_RE = re.compile(r"(?:IPC|BNS)?\s*Section\s*(\d+[A-Z]?)", re.IGNORECASE)
 
@@ -19,46 +16,6 @@ SECTION_RE = re.compile(r"(?:IPC|BNS)?\s*Section\s*(\d+[A-Z]?)", re.IGNORECASE)
 def _extract_sections(text: str) -> List[str]:
     """Return unique section numbers (e.g. 302, 103) found in text via SECTION_RE."""
     return list({m.group(1) for m in SECTION_RE.finditer(text)})
-
-
-def _score_relational(claim: str, rel: IPCBNSRelationalStore) -> Dict[str, object]:
-    """
-    Look up IPC→BNS in the relational DB. If claim mentions the correct BNS for an IPC, return supported;
-    else contradicted or uncertain. Returns dict with status, confidence, evidence, source="relational".
-    """
-    secs = _extract_sections(claim)
-    if not secs:
-        return {
-            "status": "uncertain",
-            "confidence": 0.0,
-            "evidence": "",
-            "source": "relational",
-        }
-
-    # Try each section as IPC (claim may list both IPC and BNS; set order is arbitrary)
-    for ipc in secs:
-        record = rel.get_by_ipc(ipc)
-        if not record:
-            continue
-        bns = record["bns_section"]
-        notes = record.get("notes", "")
-        ok = (bns in claim) or (f"BNS {bns}" in claim)
-        status = "supported" if ok else "contradicted"
-        conf = 0.9 if ok else 0.7
-        evidence = f"IPC {ipc} → BNS {bns}. {notes}"
-        return {
-            "status": status,
-            "confidence": conf,
-            "evidence": evidence,
-            "source": "relational",
-        }
-
-    return {
-        "status": "uncertain",
-        "confidence": 0.4,
-        "evidence": "No mapping found in IPC↔BNS table.",
-        "source": "relational",
-    }
 
 
 def _chunk_contains_any_section(chunk_text: str, section_numbers: List[str]) -> bool:
@@ -168,88 +125,27 @@ def _score_vector(claim: str, vec: IPCBNSVectorStore) -> Dict[str, object]:
     }
 
 
-def _fuse(rel: Dict[str, object], vec: Dict[str, object]) -> VerificationRecord:
-    """
-    Combine relational and vector scores into one VerificationRecord. When relational is uncertain,
-    use vector result; otherwise merge (e.g. relational supported + vector contradicted → uncertain).
-    """
-    if rel["status"] != "uncertain":
-        base_status = str(rel["status"])
-        base_conf = float(rel["confidence"])
-        vec_status = str(vec["status"])
-        vec_conf = float(vec["confidence"])
-
-        if base_status == "supported" and vec_status == "contradicted" and vec_conf > 0.7:
-            # Relational says supported but vector says contradicted with high conf → downgrade
-            status = "uncertain"
-            conf = (base_conf + vec_conf) / 2
-        elif vec_status == "no_evidence":
-            # Relational had something; vector found no evidence in KB — keep relational result
-            status = "strong_evidence" if base_status == "supported" else "contradicted"
-            conf = max(base_conf, vec_conf)
-        else:
-            # Map relational to tiered labels: supported → strong_evidence, contradicted → contradicted
-            status = "strong_evidence" if base_status == "supported" else "contradicted"
-            conf = max(base_conf, vec_conf)
-
-        evidence = f"{rel['evidence']}\n\nVector evidence:\n{vec['evidence']}"
-        source = "mixed"
-    else:
-        status = str(vec["status"])
-        conf = float(vec["confidence"])
-        evidence = str(vec["evidence"])
-        source = "vector"
-
-    return {
-        "claim": "",
-        "status": status,  # type: ignore[assignment]
-        "confidence": float(round(conf, 3)),
-        "evidence": evidence,
-        "source": source,
-    }
-
-
 def verifier_node(state: VerificationState) -> VerificationState:
     """
-    If route is "direct", sets verifications=[] and a direct_answer final_result and returns.
-    Otherwise scores each claim via relational (if enabled) and vector store, fuses results,
+    Scores each claim via the vector store (embedding similarity over PDF chunks),
     then sets state["verifications"] and state["final_result"] (overall_status, counts, average_confidence).
     """
-    if state.get("route", "verify") == "direct":
-        state["verifications"] = []
-        state["final_result"] = {
-            "overall_status": "direct_answer",
-            "average_confidence": 1.0,
-            "supported_claims": 0,
-            "weak_evidence_claims": 0,
-            "no_evidence_claims": 0,
-            "contradicted_claims": 0,
-            "uncertain_claims": 0,
-            "total_claims": 0,
-        }
-        return state
-
     throttle_before_api_call()
     claims = state.get("claims", [])
-    rel = IPCBNSRelationalStore(paths.SQLITE_DB) if USE_RELATIONAL_VERIFICATION else None
     vec = IPCBNSVectorStore()
 
     verifications: List[VerificationRecord] = []
 
     for claim in claims:
-        if USE_RELATIONAL_VERIFICATION and rel is not None:
-            rel_score = _score_relational(claim, rel)
-        else:
-            rel_score = {
-                "status": "uncertain",
-                "confidence": 0.0,
-                "evidence": "",
-                "source": "relational",
-            }
         vec_score = _score_vector(claim, vec)
-        fused = _fuse(rel_score, vec_score)
-        fused["claim"] = claim
-        verifications.append(fused)
+        record: VerificationRecord = {
+            "claim": claim,
+            "status": vec_score["status"],  # type: ignore[typeddict-unknown-key]
+            "confidence": float(round(float(vec_score["confidence"]), 3)),
+            "evidence": str(vec_score["evidence"]),
+            "source": "vector",
+        }
+        verifications.append(record)
 
     state["verifications"] = verifications
 
@@ -265,7 +161,7 @@ def verifier_node(state: VerificationState) -> VerificationState:
     if total == 0:
         overall = "no_claims"
     elif contradicted > 0:
-        # Only actual KB/relational contradiction → unreliable; no_evidence is not contradiction
+        # Vector-store contradiction → unreliable; no_evidence is not contradiction
         overall = "unreliable"
     elif supported / max(total, 1) >= 0.7 and avg_conf >= 0.55:
         overall = "reliable"

@@ -1,6 +1,6 @@
 """
 Claim extractor node: takes the LLM answer and extracts atomic factual claims (one per line)
-for verification. Skips when route is "direct". Filters out preamble/meta lines.
+for verification. Filters out preamble/meta lines.
 """
 import re
 from typing import List
@@ -64,13 +64,9 @@ def _parse_claims(text: str) -> List[str]:
 
 def claim_extractor_node(state: VerificationState) -> VerificationState:
     """
-    If route is "direct", sets state["claims"] to [] and returns. Otherwise calls the LLM to
-    extract atomic factual claims from state["llm_answer"], parses the response, and sets state["claims"].
+    Calls the LLM to extract atomic factual claims from state["llm_answer"], parses the response,
+    and sets state["claims"].
     """
-    if state.get("route", "verify") == "direct":
-        state["claims"] = []
-        return state
-
     throttle_before_api_call()
     provider = state.get("llm_provider", "groq")
     model = state.get("llm_model") or "llama-3.3-70b-versatile"

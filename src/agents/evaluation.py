@@ -1,6 +1,6 @@
 """
 Evaluation node: appends one JSONL line per run to data/eval_log.jsonl (timestamp, question,
-plan, route, overall_status, average_confidence, claim counts). Used for offline metrics; does not
+overall_status, average_confidence, claim counts). Used for offline metrics; does not
 change the answer. Sets state["evaluation"] to the logged dict.
 """
 import json
@@ -13,15 +13,13 @@ from src.graph.state import VerificationState
 
 def evaluation_node(state: VerificationState) -> VerificationState:
     """
-    Builds a log dict from state (question, plan, route, final_result stats) and appends it to
+    Builds a log dict from state (question, final_result stats) and appends it to
     paths.EVAL_LOG. Writes the same dict to state["evaluation"] and returns state.
     """
     final = state.get("final_result", {})
     log = {
         "timestamp": datetime.utcnow().isoformat(),
         "question": state.get("question"),
-        "plan": state.get("plan"),
-        "route": state.get("route"),
         "overall_status": final.get("overall_status"),
         "average_confidence": final.get("average_confidence"),
         "counts": {

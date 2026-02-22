@@ -1,15 +1,11 @@
 """
-Vector and relational stores for verification: embeddings (Google or local), SQLite IPC→BNS mapping
-(IPCBNSRelationalStore), and Chroma vector store over PDF chunks (IPCBNSVectorStore). The verifier
-uses both to score claims.
+Vector store for verification: embeddings (Google or local) and Chroma vector store over PDF chunks
+(IPCBNSVectorStore). The verifier uses the vector store to score claims by semantic similarity.
 """
 import json
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-
-from sqlalchemy import Column, MetaData, String, Table, create_engine, select
-from sqlalchemy.engine import Engine
 
 from langchain_chroma import Chroma
 from langchain_core.embeddings import Embeddings
@@ -54,53 +50,6 @@ class SentenceTransformerEmbeddings(Embeddings):
         """Embed a single query string; returns one float vector."""
         model = self._get_model()
         return model.encode(text, convert_to_numpy=True).tolist()
-
-
-class IPCBNSRelationalStore:
-    """
-    Structured IPC → BNS mapping in SQLite.
-
-    This is the authoritative layer for section mappings.
-    """
-
-    def __init__(self, db_path: str):
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self.engine: Engine = create_engine(f"sqlite:///{db_path}")
-        self.meta = MetaData()
-        self.mapping = Table(
-            "ipcbns_mapping",
-            self.meta,
-            Column("ipc_section", String, primary_key=True),
-            Column("bns_section", String),
-            Column("notes", String),
-        )
-        self.meta.create_all(self.engine)
-
-    def upsert_mapping(self, ipc: str, bns: str, notes: str = "") -> None:
-        with self.engine.begin() as conn:
-            conn.execute(
-                self.mapping.insert()
-                .values(ipc_section=ipc, bns_section=bns, notes=notes)
-                .prefix_with("OR REPLACE")
-            )
-
-    def get_by_ipc(self, ipc: str) -> Optional[Dict[str, str]]:
-        with self.engine.begin() as conn:
-            row = conn.execute(
-                select(self.mapping).where(self.mapping.c.ipc_section == ipc)
-            ).fetchone()
-            if not row:
-                return None
-            return dict(row._mapping)
-
-    def get_by_bns(self, bns: str) -> Optional[Dict[str, str]]:
-        with self.engine.begin() as conn:
-            row = conn.execute(
-                select(self.mapping).where(self.mapping.c.bns_section == bns)
-            ).fetchone()
-            if not row:
-                return None
-            return dict(row._mapping)
 
 
 class IPCBNSVectorStore:

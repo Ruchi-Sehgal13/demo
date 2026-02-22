@@ -2,7 +2,7 @@
 Shared state for the verification workflow. All nodes read from and write to VerificationState;
 VerificationRecord describes one verified claim (status, confidence, evidence).
 """
-from typing import Any, Dict, List, Literal, Optional, TypedDict
+from typing import Any, Dict, List, Literal, TypedDict
 
 # Tiered by strength of evidence (vector similarity + optional section match)
 StatusLabel = Literal[
@@ -11,17 +11,17 @@ StatusLabel = Literal[
     "weak_evidence",      # some relevance, not enough to fully trust
     "uncertain",          # cannot tell
     "no_evidence",        # no relevant evidence in KB — model's claim, not verified
-    "contradicted",       # KB or relational explicitly contradicts
+    "contradicted",       # Vector store / KB explicitly contradicts
 ]
 
 
 class VerificationRecord(TypedDict):
-    """One claim plus its verification result: status, confidence, evidence snippet, and source (relational/vector/mixed)."""
+    """One claim plus its verification result: status, confidence, evidence snippet, and source (vector)."""
     claim: str
     status: StatusLabel
     confidence: float
     evidence: str
-    source: str  # "relational", "vector", or "mixed"
+    source: str  # "vector"
 
 
 class VerificationState(TypedDict, total=False):
@@ -34,10 +34,6 @@ class VerificationState(TypedDict, total=False):
     llm_provider: str
     llm_model: str
 
-    # Planner output
-    plan: str
-    route: Literal["direct", "verify"]
-
     # Primary LLM output
     llm_answer: str
 
@@ -47,10 +43,6 @@ class VerificationState(TypedDict, total=False):
     # Verification
     verifications: List[VerificationRecord]
     final_result: Dict[str, Any]
-
-    # Human validation
-    needs_human: bool
-    human_feedback: Optional[str]
 
     # Evaluation
     evaluation: Dict[str, Any]
