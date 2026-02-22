@@ -1,3 +1,7 @@
+"""
+LangGraph workflow: builds the verification graph (planner → primary_llm → [claim_extractor → verifier → human_validation] → evaluation)
+and provides run_workflow() to execute it for a single question.
+"""
 from langgraph.graph import END, StateGraph
 
 from src.agents.claim_extractor import claim_extractor_node
@@ -10,6 +14,11 @@ from src.graph.state import VerificationState
 
 
 def create_workflow():
+    """
+    Build and compile the LangGraph workflow. Defines nodes (planner, primary_llm, claim_extractor,
+    verifier, human_validation, evaluation), entry point, linear edges, and one conditional edge
+    (after primary_llm: verify → claim_extractor, direct → evaluation). Returns a runnable graph.
+    """
     g = StateGraph(VerificationState)
 
     g.add_node("planner", planner_node)
@@ -25,6 +34,7 @@ def create_workflow():
     g.add_edge("planner", "primary_llm")
 
     def _should_verify(state: VerificationState) -> bool:
+        """True if the planner chose full verification (claim extraction + verifier); False for direct answer only."""
         return state.get("route", "verify") == "verify"
 
     # Conditional branch: verify or direct.
@@ -50,6 +60,11 @@ def run_workflow(
     llm_provider: str = "groq",
     llm_model: str = "llama-3.3-70b-versatile",
 ):
+    """
+    Run the full verification pipeline for one question. Initializes state with question and
+    LLM settings, invokes the compiled graph, and returns the final state (answer, verifications,
+    final_result, needs_human, etc.).
+    """
     app = create_workflow()
     initial: VerificationState = {
         "question": question,

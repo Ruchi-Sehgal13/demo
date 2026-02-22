@@ -1,3 +1,7 @@
+"""
+Claim extractor node: takes the LLM answer and extracts atomic factual claims (one per line)
+for verification. Skips when route is "direct". Filters out preamble/meta lines.
+"""
 import re
 from typing import List
 
@@ -26,6 +30,7 @@ prompt = ChatPromptTemplate.from_messages(
 
 
 # Preamble/meta phrases that should not be treated as claims (case-insensitive)
+#this removes the extra wording or intro lines of answer given by llm
 _PREAMBLE_PATTERNS = [
     r"here is the list",
     r"extracted atomic (factual )?claims",
@@ -42,6 +47,7 @@ def _is_preamble(line: str) -> bool:
 
 
 def _parse_claims(text: str) -> List[str]:
+    """Split LLM output into lines, strip numbers/bullets and preamble lines; return list of claim strings."""
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     claims: List[str] = []
     for line in lines:
@@ -57,6 +63,10 @@ def _parse_claims(text: str) -> List[str]:
 
 
 def claim_extractor_node(state: VerificationState) -> VerificationState:
+    """
+    If route is "direct", sets state["claims"] to [] and returns. Otherwise calls the LLM to
+    extract atomic factual claims from state["llm_answer"], parses the response, and sets state["claims"].
+    """
     if state.get("route", "verify") == "direct":
         state["claims"] = []
         return state

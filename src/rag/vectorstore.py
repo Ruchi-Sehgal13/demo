@@ -1,3 +1,8 @@
+"""
+Vector and relational stores for verification: embeddings (Google or local), SQLite IPC→BNS mapping
+(IPCBNSRelationalStore), and Chroma vector store over PDF chunks (IPCBNSVectorStore). The verifier
+uses both to score claims.
+"""
 import json
 import os
 from pathlib import Path
@@ -13,7 +18,10 @@ from src.config import paths
 
 
 def get_embeddings() -> Embeddings:
-    """Use Google embeddings if GOOGLE_API_KEY is set, else local sentence-transformers."""
+    """
+    Return a LangChain Embeddings implementation: Google Generative AI if GOOGLE_API_KEY is set,
+    otherwise local SentenceTransformerEmbeddings (all-MiniLM-L6-v2) so no API key is required.
+    """
     if os.getenv("GOOGLE_API_KEY"):
         from langchain_google_genai import GoogleGenerativeAIEmbeddings
         return GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
@@ -21,23 +29,29 @@ def get_embeddings() -> Embeddings:
 
 
 class SentenceTransformerEmbeddings(Embeddings):
-    """Local embeddings via sentence-transformers (no API key)."""
+    """
+    Local embedding model using sentence-transformers (no API key). Implements LangChain Embeddings
+    so it can be used with Chroma. Lazy-loads the model on first embed_documents or embed_query.
+    """
 
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         self._model_name = model_name
         self._model = None
 
     def _get_model(self):
+        """Load the SentenceTransformer model on first use."""
         if self._model is None:
             from sentence_transformers import SentenceTransformer
             self._model = SentenceTransformer(self._model_name)
         return self._model
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """Embed a list of texts; returns a list of float vectors (one per text)."""
         model = self._get_model()
         return model.encode(texts, convert_to_numpy=True).tolist()
 
     def embed_query(self, text: str) -> List[float]:
+        """Embed a single query string; returns one float vector."""
         model = self._get_model()
         return model.encode(text, convert_to_numpy=True).tolist()
 

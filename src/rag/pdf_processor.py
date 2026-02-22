@@ -1,3 +1,7 @@
+"""
+PDF processing for the IPC–BNS conversion guide: load PDF pages, chunk text with structure awareness
+(section headings, table boundaries), and write chunks to JSON for the vector store builder.
+"""
 import json
 import re
 from pathlib import Path
@@ -7,12 +11,16 @@ import fitz  # PyMuPDF
 
 from src.config import paths
 
+# Match paragraph that starts with optional "Section " then digits (e.g. Section 302).
 SECTION_RE = re.compile(r"^\s*(Section\s+)?(\d+[A-Z]?)\b")
 TABLE_HEADING_RE = re.compile(r"^Table\s+\d+", re.IGNORECASE)
 
 
 def load_pdf_pages(pdf_path: Path) -> List[Dict[str, Any]]:
-    """Load text page by page with page numbers."""
+    """
+    Open the PDF and return a list of dicts, one per page: {"page": 1-based index, "text": page text}.
+    Uses PyMuPDF (fitz). Raises FileNotFoundError if the path does not exist.
+    """
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF not found at {pdf_path}")
     doc = fitz.open(pdf_path)
@@ -30,11 +38,10 @@ def structure_aware_chunk(
     pages: List[Dict[str, Any]], max_chars: int = 1200
 ) -> List[Dict[str, Any]]:
     """
-    Simple structure-aware chunking:
-
-    - Split text into paragraphs by double newlines.
-    - Detect headings like 'Section 302 ...'.
-    - Track (page, section) metadata for each chunk.
+    Turn a list of page dicts (page, text) into chunks with metadata. Splits on double newlines;
+    starts a new chunk at section headings (Section N) and at "Table N" lines so conversion tables
+    stay in separate chunks. Each chunk is {"text": ..., "metadata": {"page": int, "section": str|None}}.
+    Merges paragraphs into the same chunk until max_chars would be exceeded.
     """
     chunks: List[Dict[str, Any]] = []
 
@@ -73,6 +80,11 @@ def structure_aware_chunk(
 
 
 def main():
+    """
+    Load the raw IPC–BNS PDF, chunk it with structure_aware_chunk(), and write the result to
+    paths.PROCESSED_CHUNKS (JSON with source, num_chunks, chunks). Run this before building
+    the vector store (e.g. scripts/build_vector_store.py).
+    """
     pdf_path = Path(paths.RAW_PDF)
     out_path = Path(paths.PROCESSED_CHUNKS)
     out_path.parent.mkdir(parents=True, exist_ok=True)

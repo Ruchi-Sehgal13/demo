@@ -1,3 +1,7 @@
+"""
+Planner node: decides whether the user question needs full verification (legal IPC/BNS) or a direct answer only.
+Outputs plan (short description) and route ("verify" or "direct") into state.
+"""
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
@@ -35,6 +39,10 @@ prompt = ChatPromptTemplate.from_messages(
 
 
 def planner_node(state: VerificationState) -> VerificationState:
+    """
+    First node in the workflow. Calls the LLM to decide route (verify vs direct) and a short plan;
+    normalizes route to "verify" or "direct" and writes plan + route into state.
+    """
     throttle_before_api_call()
     provider = state.get("llm_provider", "groq")
     model = state.get("llm_model") or "llama-3.3-70b-versatile"

@@ -1,3 +1,7 @@
+"""
+Primary LLM node: answers the user's question using a legal-expert (IPC ↔ BNS) system prompt.
+Writes the model's answer into state["llm_answer"] for downstream claim extraction and verification.
+"""
 from langchain_core.prompts import ChatPromptTemplate
 
 from src.config import LLMConfig, get_llm, throttle_before_api_call
@@ -28,6 +32,10 @@ prompt = ChatPromptTemplate.from_messages(
 
 
 def primary_llm_node(state: VerificationState) -> VerificationState:
+    """
+    Runs the main LLM with the user question. Uses provider/model from state; writes the reply
+    into state["llm_answer"] and returns the updated state.
+    """
     throttle_before_api_call()
     provider = state.get("llm_provider", "groq")
     model = state.get("llm_model") or "llama-3.3-70b-versatile"

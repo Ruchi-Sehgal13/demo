@@ -1,3 +1,7 @@
+"""
+Application configuration: LLM provider settings, project paths, API throttling, and retries.
+Loads environment variables from .env and exposes get_llm() for LangChain-compatible chat models.
+"""
 import os
 import re
 import time
@@ -8,6 +12,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Allowed LLM backends: groq (Groq API), google (Gemini), offline (dummy for testing).
 LLMProvider = Literal["groq", "google", "offline"]
 
 # Seconds to wait between LLM/API calls to stay under RPM/TPM limits
@@ -18,6 +23,7 @@ MAX_RETRIES = 4
 
 @dataclass
 class LLMConfig:
+    """Settings for which LLM to use and how it behaves (provider, model name, temperature)."""
     provider: LLMProvider = "groq"
     model: str = "llama-3.3-70b-versatile"
     temperature: float = 0.2
@@ -25,6 +31,7 @@ class LLMConfig:
 
 @dataclass
 class ProjectPaths:
+    """Absolute paths to project data: project root, raw PDF, processed chunks JSON, SQLite DB, eval log."""
     ROOT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     RAW_PDF: str = os.path.join(ROOT, "data", "raw", "IPC-to-BNS-Conversion-Guide.pdf")
     PROCESSED_CHUNKS: str = os.path.join(
@@ -41,7 +48,10 @@ _last_api_call_time: float = 0.0
 
 
 def throttle_before_api_call() -> None:
-    """Sleep if needed so at least THROTTLE_SECONDS have passed since last API call."""
+    """
+    Sleep if needed so at least THROTTLE_SECONDS have passed since last API call.
+    Call this before each LLM/embedding request to avoid rate limits (RPM/TPM).
+    """
     global _last_api_call_time
     elapsed = time.monotonic() - _last_api_call_time
     if elapsed < THROTTLE_SECONDS and _last_api_call_time > 0:
@@ -50,7 +60,10 @@ def throttle_before_api_call() -> None:
 
 
 def _invoke_with_retry(fn: Callable[[], Any], max_retries: int = MAX_RETRIES) -> Any:
-    """Run fn(); on 429/RESOURCE_EXHAUSTED, parse retry delay and retry up to max_retries."""
+    """
+    Run fn(); on 429 / RESOURCE_EXHAUSTED, wait (with optional parsed delay) and retry.
+    Other exceptions are re-raised immediately. Used internally by LLM wrappers.
+    """
     last_error: Optional[Exception] = None
     for attempt in range(max_retries):
         try:
@@ -73,7 +86,10 @@ def _invoke_with_retry(fn: Callable[[], Any], max_retries: int = MAX_RETRIES) ->
 
 
 class _RetryableLLM:
-    """Wraps an LLM to retry on 429 / RESOURCE_EXHAUSTED with backoff."""
+    """
+    Wraps a LangChain LLM so invoke() and with_structured_output() retry on 429
+    / RESOURCE_EXHAUSTED with backoff. Not used directly; get_llm() returns raw LLMs.
+    """
 
     def __init__(self, llm: Any, max_retries: int = MAX_RETRIES) -> None:
         self._llm = llm
@@ -102,7 +118,10 @@ class _RetryableLLM:
 
 def get_llm(config: Optional[LLMConfig] = None):
     """
-    Return a LangChain-compatible chat model. Supports groq, google (Gemini), and offline.
+    Return a LangChain-compatible chat model for the given config.
+    - groq: uses GROQ_API_KEY, default model llama-3.3-70b-versatile.
+    - google: uses GOOGLE_API_KEY, default model gemini-2.5-flash.
+    - offline: returns a dummy runnable that echoes the last message (no API key).
     """
     if config is None:
         config = LLMConfig()

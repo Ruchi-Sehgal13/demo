@@ -1,3 +1,8 @@
+"""
+Human validation node: based on final_result (overall_status, average_confidence), decides if the
+answer needs human review. If so, appends a record to data/human_review_queue.jsonl; otherwise
+marks as auto-approved. Sets state["needs_human"] and state["human_feedback"].
+"""
 import json
 from datetime import datetime
 from pathlib import Path
@@ -8,9 +13,9 @@ from src.graph.state import VerificationState
 
 def human_validation_node(state: VerificationState) -> VerificationState:
     """
-    Decide whether a human should review and, if so, queue the case.
-
-    For the assignment this is simulated by writing to a JSONL queue.
+    Sets needs_human True when overall_status is unreliable/uncertain or average_confidence < 0.7.
+    If needs_human: append question, answer, verifications, final_result to human_review_queue.jsonl
+    and set human_feedback to "queued_for_review". Else set human_feedback to "auto-approved".
     """
     final = state.get("final_result", {})
     overall = final.get("overall_status", "unknown")

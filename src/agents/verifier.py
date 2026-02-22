@@ -1,3 +1,8 @@
+"""
+Verifier node: for each extracted claim, scores it using the relational store (SQLite IPC→BNS)
+and the vector store (Chroma similarity over PDF chunks), then fuses results into a VerificationRecord.
+Produces state["verifications"] and state["final_result"] (overall_status, counts, average_confidence).
+"""
 import re
 from typing import Dict, List
 
@@ -12,10 +17,15 @@ SECTION_RE = re.compile(r"(?:IPC|BNS)?\s*Section\s*(\d+[A-Z]?)", re.IGNORECASE)
 
 
 def _extract_sections(text: str) -> List[str]:
+    """Return unique section numbers (e.g. 302, 103) found in text via SECTION_RE."""
     return list({m.group(1) for m in SECTION_RE.finditer(text)})
 
 
 def _score_relational(claim: str, rel: IPCBNSRelationalStore) -> Dict[str, object]:
+    """
+    Look up IPC→BNS in the relational DB. If claim mentions the correct BNS for an IPC, return supported;
+    else contradicted or uncertain. Returns dict with status, confidence, evidence, source="relational".
+    """
     secs = _extract_sections(claim)
     if not secs:
         return {
@@ -80,6 +90,11 @@ def _chunk_states_mapping(chunk_text: str, section_numbers: List[str]) -> bool:
 
 
 def _score_vector(claim: str, vec: IPCBNSVectorStore) -> Dict[str, object]:
+    """
+    Query the vector store for chunks similar to the claim; score by similarity and whether the chunk
+    contains the claim's section numbers. Returns dict with status (strong/moderate/weak_evidence,
+    uncertain, no_evidence), confidence, evidence snippet, source="vector".
+    """
     secs = _extract_sections(claim)
     # Enrich query so embedding leans toward conversion-table chunks
     query = (
@@ -154,6 +169,10 @@ def _score_vector(claim: str, vec: IPCBNSVectorStore) -> Dict[str, object]:
 
 
 def _fuse(rel: Dict[str, object], vec: Dict[str, object]) -> VerificationRecord:
+    """
+    Combine relational and vector scores into one VerificationRecord. When relational is uncertain,
+    use vector result; otherwise merge (e.g. relational supported + vector contradicted → uncertain).
+    """
     if rel["status"] != "uncertain":
         base_status = str(rel["status"])
         base_conf = float(rel["confidence"])
@@ -191,6 +210,11 @@ def _fuse(rel: Dict[str, object], vec: Dict[str, object]) -> VerificationRecord:
 
 
 def verifier_node(state: VerificationState) -> VerificationState:
+    """
+    If route is "direct", sets verifications=[] and a direct_answer final_result and returns.
+    Otherwise scores each claim via relational (if enabled) and vector store, fuses results,
+    then sets state["verifications"] and state["final_result"] (overall_status, counts, average_confidence).
+    """
     if state.get("route", "verify") == "direct":
         state["verifications"] = []
         state["final_result"] = {

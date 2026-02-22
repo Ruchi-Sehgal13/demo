@@ -1,3 +1,7 @@
+"""
+Shared state for the verification workflow. All nodes read from and write to VerificationState;
+VerificationRecord describes one verified claim (status, confidence, evidence).
+"""
 from typing import Any, Dict, List, Literal, Optional, TypedDict
 
 # Tiered by strength of evidence (vector similarity + optional section match)
@@ -12,6 +16,7 @@ StatusLabel = Literal[
 
 
 class VerificationRecord(TypedDict):
+    """One claim plus its verification result: status, confidence, evidence snippet, and source (relational/vector/mixed)."""
     claim: str
     status: StatusLabel
     confidence: float
@@ -20,6 +25,10 @@ class VerificationRecord(TypedDict):
 
 
 class VerificationState(TypedDict, total=False):
+    """
+    State passed through the LangGraph workflow. All keys are optional (total=False).
+    Nodes read existing keys and add/update others as the pipeline runs.
+    """
     # Input
     question: str
     llm_provider: str
