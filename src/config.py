@@ -12,8 +12,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Allowed LLM backends: groq (Groq API), google (Gemini), offline (dummy for testing).
-LLMProvider = Literal["groq", "google", "offline"]
+# Allowed LLM backends: groq (Groq API), google (Gemini).
+LLMProvider = Literal["groq", "google"]
 
 # Seconds to wait between LLM/API calls to stay under RPM/TPM limits
 THROTTLE_SECONDS = 2.0
@@ -120,7 +120,6 @@ def get_llm(config: Optional[LLMConfig] = None):
     Return a LangChain-compatible chat model for the given config.
     - groq: uses GROQ_API_KEY, default model llama-3.3-70b-versatile.
     - google: uses GOOGLE_API_KEY, default model gemini-2.5-flash.
-    - offline: returns a dummy runnable that echoes the last message (no API key).
     """
     if config is None:
         config = LLMConfig()
@@ -148,14 +147,5 @@ def get_llm(config: Optional[LLMConfig] = None):
             google_api_key=api_key,
             temperature=config.temperature,
         )
-
-    if config.provider == "offline":
-        from langchain_core.runnables import RunnableLambda  # type: ignore
-
-        def _dummy(messages):
-            last = messages[-1].content if messages else ""
-            return {"content": f"OFFLINE DUMMY ANSWER (echo): {last[:200]}"}
-
-        return RunnableLambda(_dummy)
 
     raise ValueError(f"Unknown provider: {config.provider}")

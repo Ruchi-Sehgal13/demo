@@ -1,6 +1,6 @@
 """
 Build the Chroma vector store from the processed PDF chunks.
-Run once (requires GOOGLE_API_KEY in .env): python -m scripts.build_vector_store
+Run once (requires GOOGLE_API_KEY in .env): python -m src.rag.build_vector_store
 """
 import json
 import sys

@@ -1,34 +1,34 @@
 """
-LangGraph workflow: builds the verification graph (primary_llm → claim_extractor → verifier → evaluation).
-Every LLM answer is verified; no direct-answer path. Provides run_workflow() to execute for a single question.
+LangGraph workflow: primary_llm → claim_extractor → verifier → composer → evaluation.
 """
 from langgraph.graph import END, StateGraph
 
-from src.agents.claim_extractor import claim_extractor_node
-from src.agents.evaluation import evaluation_node
-from src.agents.primary_llm import primary_llm_node
-from src.agents.verifier import verifier_node
 from src.graph.state import VerificationState
+from src.nodes.agents.claim_extractor import claim_extractor_node
+from src.nodes.agents.composer import composer_node
+from src.nodes.agents.primary_llm import primary_llm_node
+from src.nodes.agents.verifier import verifier_node
+from src.nodes.steps.evaluation import evaluation_node
 
 
 def create_workflow():
     """
-    Build and compile the LangGraph workflow. Defines nodes (primary_llm, claim_extractor,
-    verifier, evaluation), entry point primary_llm, linear edges. All answers go through verification.
-    Returns a runnable graph.
+    Build and compile the LangGraph workflow. Entry: primary_llm → claim_extractor → verifier → composer → evaluation.
     """
     g = StateGraph(VerificationState)
 
     g.add_node("primary_llm", primary_llm_node)
     g.add_node("claim_extractor", claim_extractor_node)
     g.add_node("verifier", verifier_node)
+    g.add_node("composer", composer_node)
     g.add_node("evaluation", evaluation_node)
 
     g.set_entry_point("primary_llm")
 
     g.add_edge("primary_llm", "claim_extractor")
     g.add_edge("claim_extractor", "verifier")
-    g.add_edge("verifier", "evaluation")
+    g.add_edge("verifier", "composer")
+    g.add_edge("composer", "evaluation")
     g.add_edge("evaluation", END)
 
     return g.compile()

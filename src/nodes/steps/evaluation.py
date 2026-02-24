@@ -1,6 +1,6 @@
 """
 Evaluation node: appends one JSONL line per run to data/eval_log.jsonl (timestamp, question,
-overall_status, average_confidence, claim counts). Used for offline metrics; does not
+overall_status, verified/not_verified counts). Used for offline metrics; does not
 change the answer. Sets state["evaluation"] to the logged dict.
 """
 import json
@@ -21,15 +21,9 @@ def evaluation_node(state: VerificationState) -> VerificationState:
         "timestamp": datetime.utcnow().isoformat(),
         "question": state.get("question"),
         "overall_status": final.get("overall_status"),
-        "average_confidence": final.get("average_confidence"),
-        "counts": {
-            "supported": final.get("supported_claims"),
-            "weak_evidence": final.get("weak_evidence_claims", 0),
-            "no_evidence": final.get("no_evidence_claims", 0),
-            "contradicted": final.get("contradicted_claims"),
-            "uncertain": final.get("uncertain_claims"),
-            "total": final.get("total_claims"),
-        },
+        "verified_claims": final.get("verified_claims"),
+        "not_verified_claims": final.get("not_verified_claims"),
+        "total_claims": final.get("total_claims"),
     }
 
     p = Path(paths.EVAL_LOG)

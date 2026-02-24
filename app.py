@@ -27,17 +27,15 @@ with st.sidebar:
 
     provider = st.selectbox(
         "LLM Provider",
-        ["groq", "google", "offline"],
+        ["groq", "google"],
         index=1,
-        help="Groq or Google (Gemini) for real answers; offline for testing without API.",
+        help="Groq or Google (Gemini) for answers.",
     )
 
     if provider == "groq":
         default_model = "llama-3.3-70b-versatile"
-    elif provider == "google":
-        default_model = "gemini-2.5-flash"
     else:
-        default_model = ""
+        default_model = "gemini-2.5-flash"
     model = st.text_input(
         "Model name",
         value=default_model,
@@ -48,8 +46,9 @@ with st.sidebar:
     st.markdown(
         "**Workflow**\n\n"
         "1. Primary LLM answers the question.\n"
-        "2. Claims are extracted and verified via the vector store (embedding similarity).\n"
-        "3. All runs are logged."
+        "2. Claims are extracted; each is verified by semantic search + LLM (true/false).\n"
+        "3. Composer outputs only verified claims (guardrailed answer).\n"
+        "4. All runs are logged."
     )
 
 st.markdown("---")
@@ -91,26 +90,21 @@ if result:
     final = result.get("final_result", {})
 
     tab1, tab2, tab3, tab4 = st.tabs(
-        ["Primary Answer", "Verification", "Evidence / Evaluation", "Debug"]
+        ["Guardrailed Answer", "Verification", "Evidence / Evaluation", "Debug"]
     )
 
     with tab1:
-        st.subheader("Primary LLM Response")
-        st.markdown(result.get("llm_answer", ""))
+        st.subheader("Guardrailed Answer (verified against KB only)")
+        st.markdown(result.get("composed_answer", "_No composed answer._"))
 
-        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        c1, c2, c3, c4 = st.columns(4)
         c1.metric("Overall Status", final.get("overall_status", "").upper())
-        c2.metric("Avg Confidence", f"{final.get('average_confidence', 0.0):.2f}")
-        c3.metric("Highly / Supported", final.get("supported_claims", 0))
-        c4.metric("Weak evidence", final.get("weak_evidence_claims", 0))
-        c5.metric("No evidence in KB", final.get("no_evidence_claims", 0))
-        c6.metric("Contradicted", final.get("contradicted_claims", 0))
-        no_evidence_count = final.get("no_evidence_claims", 0)
-        if no_evidence_count > 0:
-            st.caption(
-                "For some claims, no supporting evidence was found in the knowledge base; "
-                "the answer reflects the model's reasoning for those points."
-            )
+        c2.metric("Verified", final.get("verified_claims", 0))
+        c3.metric("Not verified", final.get("not_verified_claims", 0))
+        c4.metric("Total claims", final.get("total_claims", 0))
+
+        with st.expander("Full LLM response (unfiltered)"):
+            st.markdown(result.get("llm_answer", ""))
 
     with tab2:
         st.subheader("Claim‑by‑Claim Verification")
@@ -118,34 +112,16 @@ if result:
         if not verifications:
             st.info("No claims extracted.")
         else:
-            _status_icons = {
-                "strong_evidence": "🟢",
-                "moderate_evidence": "✅",
-                "weak_evidence": "🟡",
-                "uncertain": "⚠️",
-                "no_evidence": "📋",
-                "contradicted": "❌",
-            }
-            _status_labels = {
-                "strong_evidence": "Strong evidence",
-                "moderate_evidence": "Moderate evidence",
-                "weak_evidence": "Weak evidence",
-                "uncertain": "Uncertain",
-                "no_evidence": "No evidence in KB (model's claim)",
-                "contradicted": "Contradicted",
-            }
             for i, v in enumerate(verifications, start=1):
-                status = v.get("status", "uncertain")
-                icon = _status_icons.get(status, "⚠️")
-                label = _status_labels.get(status, status.replace("_", " ").title())
+                verified = v.get("verified", False)
+                icon = "✅" if verified else "❌"
+                label = "Verified" if verified else "Not verified"
                 with st.container():
-                    c1, c2, c3, c4 = st.columns([4, 1, 1, 1])
+                    c1, c2 = st.columns([4, 1])
                     c1.markdown(f"**Claim {i}:** {v['claim']}")
-                    c2.markdown(f"{icon} {label}")
-                    c3.write(f"{v['confidence']:.2f}")
-                    c4.caption(v.get("source", ""))
-                    with st.expander("View evidence"):
-                        st.write(v["evidence"])
+                    c2.markdown(f"{icon} **{label}**")
+                    with st.expander("View evidence from KB"):
+                        st.write(v.get("evidence", ""))
                 st.divider()
 
     with tab3:

@@ -1,25 +1,14 @@
 """
 Shared state for the verification workflow. All nodes read from and write to VerificationState;
-VerificationRecord describes one verified claim (status, confidence, evidence).
+VerificationRecord describes one claim and whether it was verified (true/false) against the KB.
 """
-from typing import Any, Dict, List, Literal, TypedDict
-
-# Tiered by strength of evidence (vector similarity + optional section match)
-StatusLabel = Literal[
-    "strong_evidence",    # high similarity, chunk clearly supports
-    "moderate_evidence",  # decent match
-    "weak_evidence",      # some relevance, not enough to fully trust
-    "uncertain",          # cannot tell
-    "no_evidence",        # no relevant evidence in KB — model's claim, not verified
-    "contradicted",       # Vector store / KB explicitly contradicts
-]
+from typing import Any, Dict, List, TypedDict
 
 
 class VerificationRecord(TypedDict):
-    """One claim plus its verification result: status, confidence, evidence snippet, and source (vector)."""
+    """One claim plus verification result: verified (true/false), evidence snippet from KB, source."""
     claim: str
-    status: StatusLabel
-    confidence: float
+    verified: bool
     evidence: str
     source: str  # "vector"
 
@@ -43,6 +32,9 @@ class VerificationState(TypedDict, total=False):
     # Verification
     verifications: List[VerificationRecord]
     final_result: Dict[str, Any]
+
+    # Composer: guardrailed output (verified claims only)
+    composed_answer: str
 
     # Evaluation
     evaluation: Dict[str, Any]

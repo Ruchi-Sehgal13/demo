@@ -83,7 +83,7 @@ def main():
     """
     Load the raw IPC–BNS PDF, chunk it with structure_aware_chunk(), and write the result to
     paths.PROCESSED_CHUNKS (JSON with source, num_chunks, chunks). Run this before building
-    the vector store (e.g. scripts/build_vector_store.py).
+    the vector store (e.g. python -m src.rag.build_vector_store).
     """
     pdf_path = Path(paths.RAW_PDF)
     out_path = Path(paths.PROCESSED_CHUNKS)
